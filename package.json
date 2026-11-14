@@ -1,0 +1,12 @@
+{
+  "name": "okf-studio",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["packages/okf-core", "server", "web"],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "setup:python": "uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python pypdf lxml"
+  }
+}
