@@ -1,0 +1,106 @@
+.nosology {
+  color-scheme: light dark;
+  --bg: #f6f5f2; --fg: #1c1b19; --muted: #5e5a54; --line: #ddd8d0;
+  --panel: #fff; --bar: #e7e2da; --adult: #2f5d8c; --child: #3d7a6a; --both: #a56b2a;
+  --hover: #efece6;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .nosology {
+    --bg: #161614; --fg: #eceae4; --muted: #aaa59c; --line: #34322e;
+    --panel: #1e1d1b; --bar: #2a2926; --adult: #7eadd8; --child: #7dbead; --both: #e0b06a;
+    --hover: #262522;
+  }
+}
+.nosology .wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 72px; }
+.nosology h1 { font-size: 28px; font-weight: 560; letter-spacing: -0.02em; margin: 0 0 8px; }
+.nosology p { margin: 0; }
+.nosology .lead, .nosology .meta { color: var(--muted); }
+.nosology .lead { max-width: 78ch; }
+.nosology .meta { font-size: 13px; margin-top: 8px; }
+.nosology .back { font-size: 13px; margin-bottom: 14px; }
+.nosology .back a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+.nosology .back a:hover { color: var(--fg); }
+.nosology .stats { display: flex; gap: 28px; margin: 22px 0 4px; flex-wrap: wrap; }
+.nosology .stat b { display: block; font-size: 28px; font-weight: 560; letter-spacing: -0.03em; }
+.nosology .stat span { color: var(--muted); font-size: 13px; }
+.nosology .toolbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 0; margin-top: 8px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+.nosology input, .nosology select, .nosology button {
+  font: inherit; color: inherit; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
+}
+.nosology input { min-width: 220px; flex: 1; }
+.nosology button { cursor: pointer; }
+.nosology button:hover, .nosology select:hover, .nosology input:hover { background: var(--hover); }
+.nosology .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
+.nosology .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 2px; }
+.nosology .swatch.adult, .nosology .track .adult { background: var(--adult); }
+.nosology .swatch.child, .nosology .track .child { background: var(--child); }
+.nosology .swatch.both, .nosology .track .both { background: var(--both); }
+.nosology .shown, .nosology .empty { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.nosology .empty { display: none; }
+.nosology .empty.show { display: block; }
+.nosology .tree, .nosology .tree ul { list-style: none; margin: 0; padding: 0; }
+.nosology .tree ul { margin-left: 11px; padding-left: 14px; border-left: 1px solid var(--line); }
+.nosology summary {
+  display: grid;
+  grid-template-columns: 12px minmax(4.5rem, 7rem) minmax(0, 1fr) 76px auto;
+  column-gap: 10px; align-items: center;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+}
+.nosology summary::-webkit-details-marker { display: none; }
+.nosology summary::marker { content: ""; }
+.nosology summary::before {
+  content: ""; width: 0; height: 0; justify-self: center;
+  border-style: solid; border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent var(--muted);
+}
+.nosology details[open] > summary::before {
+  border-width: 5px 4px 0 4px;
+  border-color: var(--muted) transparent transparent transparent;
+}
+.nosology summary:hover { background: var(--hover); }
+.nosology summary:focus-visible, .nosology a:focus-visible, .nosology button:focus-visible,
+.nosology input:focus-visible, .nosology select:focus-visible {
+  outline: 2px solid var(--adult); outline-offset: 2px;
+}
+.nosology .code { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.nosology .label { display: block; min-width: 0; margin: 0; font-size: inherit; color: inherit; }
+.nosology .chapter > details > summary .title { font-weight: 600; }
+.nosology .range { color: var(--muted); font-size: 12px; margin-left: 8px; white-space: nowrap; }
+.nosology .count { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); text-align: right; }
+.nosology .chapter > details > summary .count { color: var(--fg); }
+.nosology .track { height: 8px; background: var(--bar); border-radius: 2px; display: flex; overflow: hidden; }
+.nosology .track i { display: block; height: 100%; }
+.nosology li.doc {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline;
+  padding: 5px 8px 5px 4px; border-radius: 6px;
+}
+.nosology li.doc:hover { background: var(--hover); }
+.nosology .docname { color: inherit; text-decoration: none; flex: 1 1 280px; }
+.nosology .docname:hover { text-decoration: underline; }
+.nosology .docmeta { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; color: var(--muted); font-size: 12px; }
+.nosology .age { font-size: 11px; line-height: 1.4; padding: 0 6px; border-radius: 99px; border: 1px solid var(--line); background: transparent; }
+.nosology .age.adult { color: var(--adult); }
+.nosology .age.child { color: var(--child); }
+.nosology .age.both { color: var(--both); }
+.nosology .codes { font-variant-numeric: tabular-nums; }
+.nosology .also { color: var(--both); }
+.nosology .ext { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+.nosology .ext:hover { color: var(--fg); }
+.nosology .ext.md.is-off { opacity: 0.35; border-bottom: none; }
+.nosology .is-hidden { display: none !important; }
+@media (max-width: 680px) {
+  .nosology summary { grid-template-columns: 12px minmax(3.4rem, 5.6rem) minmax(0, 1fr) auto; }
+  .nosology .track { display: none; }
+  .nosology .range { display: block; margin-left: 0; }
+}

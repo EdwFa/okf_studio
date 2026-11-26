@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Download, Folder, Eye, EyeOff, FolderPlus, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Send, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Download, Folder, Eye, EyeOff, FolderPlus, ListTree, PanelLeftClose, PanelLeftOpen, Pencil, Plus, ScanText, Send, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -168,6 +168,8 @@ function Home() {
     <div className="flex h-screen">
       {collapsed && (
         <aside className="flex w-11 shrink-0 flex-col items-center border-r py-3" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
+          <Link href="/nosology" className="btn btn-ghost" aria-label="Классификатор" data-tip="Классификатор" data-tip-side="right"><ListTree size={16} /></Link>
+          <Link href="/parse" className="btn btn-ghost" aria-label="Разбор PDF" data-tip="Разбор PDF" data-tip-side="right"><ScanText size={16} /></Link>
           <button className="btn btn-ghost" onClick={() => setCollapsed(false)} aria-label="Развернуть панель доменов" data-tip="Развернуть" data-tip-side="right"><PanelLeftOpen size={16} /></button>
         </aside>
       )}
@@ -178,6 +180,14 @@ function Home() {
             <button className="btn btn-ghost" onClick={() => setDialog({ kind: "newDomain" })} aria-label="Создать домен" data-tip="Создать домен"><Plus size={16} /></button>
             <button className="btn btn-ghost" onClick={() => setCollapsed(true)} aria-label="Свернуть панель доменов" data-tip="Свернуть" data-tip-side="left"><PanelLeftClose size={16} /></button>
           </span>
+        </div>
+        <div className="px-2 pb-2">
+          <Link href="/nosology" className="row-hover flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+            <ListTree size={15} /> Классификатор
+          </Link>
+          <Link href="/parse" className="row-hover flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+            <ScanText size={15} /> Разбор PDF
+          </Link>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4" aria-label="Домены и группы">
           {catalog && !domains.length && <p className="muted px-2 py-3 text-sm">Доменов пока нет. Создайте первый — например, «Онкология головы и шеи».</p>}

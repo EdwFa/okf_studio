@@ -93,4 +93,20 @@ describe("recommendations", () => {
     const text = "Доза 70 Гр.\nУровень убедительности рекомендаций – C (уровень достоверности доказательств – 5)";
     expect(structureRecommendations(text, "3")).toEqual({ body: text, recommendations: [] });
   });
+
+  it("writes 0 for a level the document does not state", () => {
+    const gradeOnly = "Рекомендуется наблюдение за пациентом.\nУровень убедительности рекомендаций – C.";
+    expect(structureRecommendations(gradeOnly, "1").recommendations[0]).toMatchObject({ grade: "C", evidence: "0" });
+    const evidenceOnly = "Рекомендуется наблюдение за пациентом.\nУровень достоверности доказательств – 4.";
+    expect(structureRecommendations(evidenceOnly, "1").recommendations[0]).toMatchObject({ grade: "0", evidence: "4" });
+    const neither = "Рекомендовано проведение целенаправленной антибактериальной терапии при развитии инфекционных осложнений.";
+    expect(structureRecommendations(neither, "1").recommendations).toEqual([
+      { n: 1, text: neither, grade: "0", evidence: "0" },
+    ]);
+  });
+
+  it("does not turn a definition into a recommendation", () => {
+    const text = "Под ингаляционной травмой следует понимать повреждение слизистой оболочки дыхательных путей.";
+    expect(structureRecommendations(text, "1")).toEqual({ body: text, recommendations: [] });
+  });
 });

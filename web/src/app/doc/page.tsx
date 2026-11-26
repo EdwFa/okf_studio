@@ -399,12 +399,12 @@ function RecRows({ id, items, disabled, apply, showSection, onOpen }: {
               {showSection && <td><button className="text-left hover:underline" onClick={() => onOpen?.(section.id)}>{section.title}</button></td>}
               <td>
                 <select className="input" aria-label={`УУР рекомендации ${label}`} disabled={disabled} value={rec.grade ?? ""} onChange={(event) => void change({ grade: event.target.value })}>
-                  <option value="">—</option>{["A", "B", "C"].map((grade) => <option key={grade}>{grade}</option>)}
+                  <option value="">—</option>{["0", "A", "B", "C"].map((grade) => <option key={grade}>{grade}</option>)}
                 </select>
               </td>
               <td>
                 <select className="input" aria-label={`УДД рекомендации ${label}`} disabled={disabled} value={rec.evidence ?? ""} onChange={(event) => void change({ evidence: event.target.value })}>
-                  <option value="">—</option>{["1", "2", "3", "4", "5"].map((level) => <option key={level}>{level}</option>)}
+                  <option value="">—</option>{["0", "1", "2", "3", "4", "5"].map((level) => <option key={level}>{level}</option>)}
                 </select>
               </td>
               <td>{rec.text}{rec.comment && <div className="muted mt-1 line-clamp-2 text-xs">Комментарий: {rec.comment}</div>}</td>

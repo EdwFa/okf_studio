@@ -9,19 +9,19 @@
  * headings: body text is full of numbered lists and reference lists that look
  * the same.
  *
- * Inside a section, recommendation statements followed by a graded-evidence
- * line ("Уровень убедительности рекомендаций – C (уровень достоверности
- * доказательств – 5)") are marked up as numbered recommendations with their
- * grade, evidence level and comment, so an agent can cite one precisely.
+ * Inside a section, recommendation statements are marked up as numbered
+ * recommendations with their grade (УУР), evidence level (УДД) and comment,
+ * so an agent can cite one precisely. A stated level is kept. When the
+ * document gives only one of the two, or neither, the missing one is 0.
  */
 
 export interface Recommendation {
   /** 1-based position within its section. */
   n: number;
   text: string;
-  /** УУР: strength of the recommendation, A–C. */
+  /** УУР: strength of the recommendation, A–C, or 0 when the document states none. */
   grade?: string;
-  /** УДД: level of evidence, 1–5. */
+  /** УДД: level of evidence, 1–5, or 0 when the document states none. */
   evidence?: string;
   comment?: string;
 }
@@ -138,49 +138,133 @@ function fullTitle(lines: string[], start: number, first: string): { title: stri
   return { title: title.replace(/\s+/g, " ").trim(), lines: used };
 }
 
-const EVIDENCE =
-  /Уровень\s+(убедительности\s+рекоменда-?\s*ций|достоверности\s+доказательств)\s*[-–—:]?\s*([A-CА-ВС1-5])\s*\(\s*уровень\s+(убедительности\s+рекоменда-?\s*ций|достоверности\s+доказательств)\s*[-–—:]?\s*([A-CА-ВС1-5])\s*\)?\.?/giu;
+/** A stated УУР or УДД, with the other level optional and in either order. A level written on its own is kept and the missing one becomes 0. */
+const LEVEL =
+  /(?:УУР|Уровень\s+убедительности\s+рекоменда-?\s*ций)\s*[-–—:]?\s*([A-CА-ВС])(?:\s*\(\s*(?:УДД|уровень\s+достоверности\s+доказательств)\s*[-–—:]?\s*([1-5])\s*\)?)?|(?:УДД|Уровень\s+достоверности\s+доказательств)\s*[-–—:]?\s*([1-5])(?:\s*\(\s*(?:УУР|уровень\s+убедительности\s+рекоменда-?\s*ций)\s*[-–—:]?\s*([A-CА-ВС])\s*\)?)?/giu;
 const REC_START = /(?:^|\n)[^\p{L}\p{N}\n]{0,4}(?:\n[ \t]*)?((?:Не\s+)?(?:Рекомендуется|Рекомендовано|Рекомендована|Рекомендован)(?![а-яё]))/gu;
 /** A recommendation worded mid-sentence: "При … рекомендуется проведение …", "… показано …". */
 const REC_VERB = /(?:рекомендуется|рекомендовано|рекомендована|рекомендован|показано|показана|показан|целесообразно|следует)(?![а-яё])/giu;
-/** Where a sentence can begin: the start of a line that follows a finished one. */
-const SENTENCE_BREAK = /(?:[.!?\]\)»:]|-->)[ \t]*\n/gu;
+/** "Следует понимать …" defines a term; it is not a recommendation. */
+const DEFINITION_VERB = /^следует\s+(?:понимать|считать|отметить|учитывать|иметь|употреблять|называть)/iu;
 const GRADE: Record<string, string> = { А: "A", В: "B", С: "C" };
+const NONE = "0";
 const BULLET_ONLY = /(?:\n[^\p{L}\p{N}\n]{1,4})+\s*$/u;
+/** A sentence ends at punctuation before a newline or a new capital. Page marks are not boundaries. */
+const CLAUSE_BREAK = /(?:[.!?\]\)»:])(?:[ \t]*\n|[ \t]+(?=[A-ZА-ЯЁ«"]))/gu;
 
-const oneLine = (value: string): string => value.replace(/<!-- page \d+ -->/g, " ").replace(/\s+/g, " ").trim();
+const oneLine = (value: string): string =>
+  value
+    .replace(/<!-- page \d+ -->/g, "\n")
+    .replace(/(?:^|\n)[ \t]*\d{1,3}[ \t]*(?=\n|$)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const asGrade = (value: string | undefined): string => {
+  if (!value) return NONE;
+  const letter = value.toUpperCase();
+  return /[A-CА-ВС]/u.test(letter) ? (GRADE[letter] ?? letter) : NONE;
+};
+
+/** Where the recommendation that contains the verb at `verbAt` begins: its own bullet, or the sentence. */
+function clauseStart(body: string, verbAt: number): number {
+  let lineStart = body.lastIndexOf("\n", verbAt - 1) + 1;
+  if (/^[ \t]*[•●▪‣][ \t]/u.test(body.slice(lineStart))) return lineStart;
+  let cursor = lineStart;
+  for (let step = 0; step < 6 && cursor > 0; step += 1) {
+    const prev = body.lastIndexOf("\n", cursor - 2) + 1;
+    const line = body.slice(prev, cursor);
+    if (line.trim() === "") break;
+    if (/^[ \t]*[•●▪‣][ \t]/u.test(line)) return prev;
+    if (/^[A-ZА-ЯЁ]/.test(line.trim())) break;
+    cursor = prev;
+  }
+  const prefix = body.slice(lineStart, verbAt);
+  if (/^[^\p{L}\p{N}\n]{0,4}$/u.test(prefix)) {
+    const prev = body.lastIndexOf("\n", lineStart - 2) + 1;
+    const prevLine = lineStart > 0 ? body.slice(prev, lineStart) : "";
+    if (prevLine.trim() === "" || /[.!?:;]\s*$/u.test(prevLine) || /^[ \t]*[•●▪‣]/u.test(prevLine)) return lineStart;
+  }
+  let from = 0;
+  CLAUSE_BREAK.lastIndex = 0;
+  for (const mark of body.matchAll(CLAUSE_BREAK)) {
+    const at = mark.index + mark[0].length;
+    if (at > verbAt) break;
+    from = at;
+  }
+  return from;
+}
+
+/** End of the recommendation that contains the verb at `verbAt`: the next bullet, or the end of its sentence. */
+function clauseEnd(body: string, verbAt: number): number {
+  const rest = body.slice(verbAt);
+  let end = rest.length;
+  const sentence = /[.!?](?=[ \t]*(?:\n|$))/u.exec(rest);
+  const bullet = /\n[ \t]*[•●▪‣][ \t]/u.exec(rest);
+  const blank = /\n[ \t]*\n/u.exec(rest);
+  if (sentence) end = Math.min(end, sentence.index + sentence[0].length);
+  if (bullet) end = Math.min(end, bullet.index);
+  if (blank) end = Math.min(end, blank.index);
+  return verbAt + end;
+}
+
+interface FoundRec {
+  start: number;
+  evidenceStart: number;
+  evidenceEnd: number;
+  grade: string;
+  evidence: string;
+}
+
+/** The statement a grade line belongs to: the last one that opens with the verb, or else the sentence of its last use. */
+function statementStart(window: string): number {
+  let start = -1;
+  for (const rec of window.matchAll(REC_START)) start = rec.index + rec[0].lastIndexOf(rec[1]!);
+  if (start >= 0) return start;
+  let verb = -1;
+  for (const hit of window.matchAll(REC_VERB)) {
+    if (DEFINITION_VERB.test(window.slice(hit.index))) continue;
+    verb = hit.index;
+  }
+  return verb < 0 ? -1 : clauseStart(window, verb);
+}
 
 /**
- * Mark up the graded recommendations in a section. Text between them is left
- * where it was; a statement that cannot be delimited with confidence is left
- * untouched too.
+ * Mark up the recommendations in a section. A level the document states is
+ * kept; a missing УУР or УДД is 0. Text between recommendations is left where
+ * it was, and a grade line with no statement to attach is left untouched.
  */
 export function structureRecommendations(body: string, label: string): { body: string; recommendations: Recommendation[] } {
-  const found: { start: number; evidenceStart: number; evidenceEnd: number; grade: string; evidence: string }[] = [];
+  const found: FoundRec[] = [];
   let floor = 0;
-  for (const match of body.matchAll(EVIDENCE)) {
+  for (const match of body.matchAll(LEVEL)) {
     const evidenceStart = match.index;
     const evidenceEnd = evidenceStart + match[0].length;
-    const window = body.slice(floor, evidenceStart);
-    let start = -1;
-    for (const rec of window.matchAll(REC_START)) start = floor + rec.index + rec[0].lastIndexOf(rec[1]!);
-    if (start < 0) {
-      // No statement opens with the verb: take the sentence that contains its last use.
-      let verb = -1;
-      for (const hit of window.matchAll(REC_VERB)) verb = hit.index;
-      if (verb >= 0) {
-        let from = 0;
-        for (const stop of window.slice(0, verb).matchAll(SENTENCE_BREAK)) from = stop.index + stop[0].length;
-        start = floor + from;
-      }
-    }
-    const gradeFirst = /убедительности/iu.test(match[1]!);
-    const gradeRaw = (gradeFirst ? match[2]! : match[4]!).toUpperCase();
-    const evidenceRaw = gradeFirst ? match[4]! : match[2]!;
+    const grade = asGrade(match[1] ?? match[4]);
+    const evidence = match[2] ?? match[3] ?? NONE;
+    const startRel = statementStart(body.slice(floor, evidenceStart));
+    const start = startRel < 0 ? -1 : floor + startRel;
     floor = evidenceEnd;
-    if (start < 0 || !/[A-CА-ВС]/u.test(gradeRaw) || !/[1-5]/.test(evidenceRaw)) continue;
-    found.push({ start, evidenceStart, evidenceEnd, grade: GRADE[gradeRaw] ?? gradeRaw, evidence: evidenceRaw });
+    if (start < 0) continue;
+    const previous = found[found.length - 1];
+    if (previous && start < previous.evidenceEnd) {
+      if (previous.grade === NONE && grade !== NONE) previous.grade = grade;
+      if (previous.evidence === NONE && evidence !== NONE) previous.evidence = evidence;
+      previous.evidenceEnd = evidenceEnd;
+      continue;
+    }
+    found.push({ start, evidenceStart, evidenceEnd, grade, evidence });
   }
+  const overlaps = (start: number, end: number) => found.some((item) => start < item.evidenceEnd && end > item.start);
+  for (const hit of body.matchAll(REC_VERB)) {
+    if (DEFINITION_VERB.test(body.slice(hit.index))) continue;
+    const start = clauseStart(body, hit.index);
+    const end = clauseEnd(body, hit.index);
+    if (end <= start || overlaps(start, end)) continue;
+    const text = oneLine(body.slice(start, end));
+    if (text.length < 20) continue;
+    found.push({ start, evidenceStart: end, evidenceEnd: end, grade: NONE, evidence: NONE });
+  }
+  found.sort((a, b) => a.start - b.start);
   if (!found.length) return { body, recommendations: [] };
 
   const recommendations: Recommendation[] = [];
