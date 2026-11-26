@@ -4,7 +4,7 @@
  * `structureRecommendations` (sections.ts) writes each graded recommendation
  * into the section text as
  *
- *   ### Рекомендация <label>/<n> · УУР <A–C> · УДД <1–5>
+ *   ### Рекомендация <label>/<n> · УУР <A–C или 0> · УДД <1–5 или 0>
  *
  *   <statement, one paragraph>
  *
@@ -57,8 +57,8 @@ export function parseBody(body: string): BodyBlock[] {
     const gap = /\n[ \t]*\n/.exec(content);
     const text = (gap ? content.slice(0, gap.index) : content).trim();
     const rest = gap ? content.slice(gap.index).trim() : "";
-    const grade = /^[A-C]$/.test(head[1]!) ? head[1]! : undefined;
-    const evidence = /^[1-5]$/.test(head[2]!) ? head[2]! : undefined;
+    const grade = /^(?:[A-C]|0)$/.test(head[1]!) ? head[1]! : undefined;
+    const evidence = /^(?:[1-5]|0)$/.test(head[2]!) ? head[2]! : undefined;
     const block: RecBlock = { kind: "rec", text, ...(grade ? { grade } : {}), ...(evidence ? { evidence } : {}) };
     if (rest.startsWith(COMMENT)) {
       const comment = rest.slice(COMMENT.length).trim();

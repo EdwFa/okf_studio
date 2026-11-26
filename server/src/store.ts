@@ -33,6 +33,7 @@ import {
   sectionLabel,
   serializeBody,
   splitIntoSections,
+  structureRecommendations,
   type KnowledgeSection,
   type RecBlock,
   type Recommendation,
@@ -925,13 +926,13 @@ export class Store {
       } else {
         if (input.grade !== undefined) {
           const grade = line(input.grade, 2).toUpperCase();
-          if (grade && !/^[A-C]$/.test(grade)) throw new StoreError("УУР — буква A, B или C");
+          if (grade && !/^(?:[A-C]|0)$/.test(grade)) throw new StoreError("УУР — A, B, C или 0");
           if (grade) rec.grade = grade;
           else delete rec.grade;
         }
         if (input.evidence !== undefined) {
           const evidence = line(input.evidence, 2);
-          if (evidence && !/^[1-5]$/.test(evidence)) throw new StoreError("УДД — число от 1 до 5");
+          if (evidence && !/^(?:[1-5]|0)$/.test(evidence)) throw new StoreError("УДД — число от 0 до 5");
           if (evidence) rec.evidence = evidence;
           else delete rec.evidence;
         }
@@ -999,7 +1000,8 @@ function fromCore(split: KnowledgeSection[]): Section[] {
 
 /** A text with no usable headings is one section; the user can cut it by hand. */
 function wholeSection(title: string, text: string): Section {
-  return { id: newId(), heading: title, level: 1, body: text, slugBase: "tekst", status: "draft", edited: false };
+  const label = title.split(/[.:]/)[0]!.trim() || "1";
+  return { id: newId(), heading: title, level: 1, body: structureRecommendations(text, label).body, slugBase: "tekst", status: "draft", edited: false };
 }
 
 /** The working sections in the shape okf-core renders, with ordered file names. */
