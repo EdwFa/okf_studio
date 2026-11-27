@@ -24,7 +24,18 @@ export default async function ParseResultPage({ params }: { params: Promise<{ id
         <a className="ml-4" href={`/pdf/${id}`} target="_blank" rel="noreferrer">PDF</a>
       </p>
       <article className="md-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{prepareClinrecMarkdown(text)}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            img: ({ src, alt }) => {
+              const file = (src || "").split("/").pop() || "";
+              if (!/^[\w.-]+$/.test(file)) return null;
+              return <img src={`/parse-asset/${id}/${file}`} alt={alt || ""} />;
+            },
+          }}
+        >
+          {prepareClinrecMarkdown(text)}
+        </ReactMarkdown>
       </article>
     </main>
   );

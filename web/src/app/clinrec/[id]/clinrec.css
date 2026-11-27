@@ -26,3 +26,4 @@
   border: 1px solid var(--line); border-radius: 8px;
 }
 .md-body pre code { font-size: inherit; }
+.md-body img { max-width: 100%; height: auto; margin: 0.8em 0; background: white; }

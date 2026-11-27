@@ -55,12 +55,19 @@ src = pymupdf.open({str(pdf)!r})
 out = Path({str(folder)!r})
 for i, page in enumerate(src):
     images = page.get_images()
-    if images:
+    pix = None
+    # A scanned page is one image of the whole sheet. A diagram page is many
+    # small pictures; those have to be rendered, not replaced by the first icon.
+    if len(images) == 1:
         pix = pymupdf.Pixmap(src, images[0][0])
-        if pix.n > 1:
-            pix = pymupdf.Pixmap(pymupdf.csGRAY, pix)
-    else:
+        if pix.w < 600 or pix.h < 600:
+            pix = None
+    if pix is None:
         pix = page.get_pixmap(dpi=200, colorspace=pymupdf.csGRAY)
+    if pix.alpha:
+        pix = pymupdf.Pixmap(pix, 0)
+    if pix.n > 1:
+        pix = pymupdf.Pixmap(pymupdf.csGRAY, pix)
     pix.save(out / f"{{i:03d}}.png")
     gray = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w)
     (out / f"{{i:03d}}.geom.json").write_text(json.dumps(analyze(gray), ensure_ascii=False))
@@ -68,7 +75,9 @@ for i, page in enumerate(src):
     (out / f"{{i:03d}}.json").write_text(json.dumps(words, ensure_ascii=False))
 print(src.page_count)
 """
-    result = subprocess.run([PY, "-c", script], check=True, capture_output=True, text=True)
+    result = subprocess.run([PY, "-c", script], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr[-2000:] or f"render exited {result.returncode}")
     return int(result.stdout.strip().splitlines()[-1])
 
 

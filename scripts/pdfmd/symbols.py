@@ -1,0 +1,95 @@
+"""Adobe Symbol font is stored in the private-use area. Map it back to letters."""
+
+from __future__ import annotations
+
+# Byte of the Symbol encoding → Unicode. Only the slots that are not ASCII.
+_BYTES = {
+    0x22: "∀",
+    0x24: "∃",
+    0x27: "∋",
+    0x2A: "∗",
+    0x2B: "+",
+    0x2D: "−",
+    0x40: "≅",
+    0x41: "Α",
+    0x42: "Β",
+    0x43: "Χ",
+    0x44: "Δ",
+    0x45: "Ε",
+    0x46: "Φ",
+    0x47: "Γ",
+    0x48: "Η",
+    0x49: "Ι",
+    0x4A: "ϑ",
+    0x4B: "Κ",
+    0x4C: "Λ",
+    0x4D: "Μ",
+    0x4E: "Ν",
+    0x4F: "Ο",
+    0x50: "Π",
+    0x51: "Θ",
+    0x52: "Ρ",
+    0x53: "Σ",
+    0x54: "Τ",
+    0x55: "Υ",
+    0x56: "ς",
+    0x57: "Ω",
+    0x58: "Ξ",
+    0x59: "Ψ",
+    0x5A: "Ζ",
+    0x61: "α",
+    0x62: "β",
+    0x63: "χ",
+    0x64: "δ",
+    0x65: "ε",
+    0x66: "φ",
+    0x67: "γ",
+    0x68: "η",
+    0x69: "ι",
+    0x6A: "ϕ",
+    0x6B: "κ",
+    0x6C: "λ",
+    0x6D: "μ",
+    0x6E: "ν",
+    0x6F: "ο",
+    0x70: "π",
+    0x71: "θ",
+    0x72: "ρ",
+    0x73: "σ",
+    0x74: "τ",
+    0x75: "υ",
+    0x76: "ϖ",
+    0x77: "ω",
+    0x78: "ξ",
+    0x79: "ψ",
+    0x7A: "ζ",
+    0x7E: "~",
+    0xA0: " ",
+    0xA3: "≤",
+    0xA5: "∞",
+    # Word stores a square list marker in the Symbol private-use slot.
+    0xA7: "▪",
+    # Symbol slot used as a right arrow in regimen tables.
+    0xAE: "→",
+    0xB0: "°",
+    0xB1: "±",
+    0xB4: "×",
+    0xB5: "∝",
+    0xB7: "•",
+    0xB8: "÷",
+    0xB9: "≠",
+    0xBA: "≡",
+    0xBB: "≈",
+    0xBE: "–",
+    0xD7: "⋅",
+    # Wingdings check mark.
+    0xFC: "✓",
+}
+
+PUA = {chr(0xF000 + byte): char for byte, char in _BYTES.items()}
+
+
+def map_symbol(text: str) -> str:
+    if not any(0xE000 <= ord(ch) <= 0xF8FF for ch in text):
+        return text
+    return "".join(PUA.get(ch, ch) for ch in text)

@@ -73,7 +73,7 @@ function pump(): void {
   const root = repoRoot();
   const target = outputFile(id);
   mkdirSync(path.dirname(target), { recursive: true });
-  const child = spawn("python3", [path.join(root, "scripts", "pdf_to_md_trial.py"), pdfFile(id)!, target], {
+  const child = spawn("python3", [path.join(root, "scripts", "pdf_to_md.py"), pdfFile(id)!, target], {
     cwd: root,
   });
   let stderr = "";
