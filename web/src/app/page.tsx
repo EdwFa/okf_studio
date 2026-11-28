@@ -17,6 +17,7 @@ type Dialog =
   | { kind: "deleteGroup"; group: GroupInfo; domain: DomainInfo }
   | { kind: "deleteDoc"; doc: DocumentMeta }
   | { kind: "publish"; group: GroupInfo }
+  | { kind: "showShelf"; domain: DomainInfo }
   | { kind: "published"; result: PublishResult }
   | { kind: "unpublish"; group: GroupInfo }
   | null;
@@ -77,6 +78,8 @@ function Home() {
   const [collapsed, setCollapsed] = useStoredFlag("okf-studio.sidebar-collapsed");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "title", desc: false });
   const [dragging, setDragging] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [notice, setNotice] = useState("");
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setClosed((current) => {
     const next = new Set(current);
@@ -112,6 +115,24 @@ function Home() {
     const timer = setInterval(() => void refresh(), 1500);
     return () => clearInterval(timer);
   }, [busy, refresh]);
+
+  const fillFromClassifier = async () => {
+    setSeeding(true);
+    setError("");
+    try {
+      const result = await api.seedCatalog();
+      const created = result.created.domains + result.created.groups;
+      setNotice(
+        created
+          ? `Создано доменов: ${result.created.domains}, групп: ${result.created.groups}. Группы скрыты от агентов, пока полку не покажут.`
+          : `Каталог уже заполнен: ${result.existing.domains} доменов и ${result.existing.groups} групп. Повторное заполнение ничего не дублирует.`,
+      );
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc));
+    }
+    setSeeding(false);
+    await refresh();
+  };
 
   const run = async (action: () => Promise<unknown>) => {
     setError("");
@@ -188,6 +209,9 @@ function Home() {
           <Link href="/parse" className="row-hover flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
             <ScanText size={15} /> Разбор PDF
           </Link>
+          <button className="btn mt-1 w-full justify-start text-left" style={{ whiteSpace: "normal" }} disabled={seeding} onClick={() => void fillFromClassifier()}>
+            {seeding ? "Заполняю…" : "Заполнить из классификатора"}
+          </button>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4" aria-label="Домены и группы">
           {catalog && !domains.length && <p className="muted px-2 py-3 text-sm">Доменов пока нет. Создайте первый — например, «Онкология головы и шеи».</p>}
@@ -231,6 +255,7 @@ function Home() {
 
       <main className="min-w-0 flex-1 overflow-y-auto p-6">
         <ErrorBanner message={error} onClose={() => setError("")} />
+        {notice && <p className="mb-3 text-sm">{notice}</p>}
 
         {catalog && !domain && (
           <div className="panel mx-auto mt-16 max-w-xl p-8 text-center">
@@ -239,7 +264,11 @@ function Home() {
               Домен — область знаний. В домене — группы документов, в группе — документы: клинические рекомендации, стандарты, статьи.
               Документ после загрузки разбивается на разделы, которые можно проверить и поправить.
             </p>
-            <button className="btn btn-primary" onClick={() => setDialog({ kind: "newDomain" })}><Plus size={14} /> Создать домен</button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button className="btn btn-primary" onClick={() => setDialog({ kind: "newDomain" })}><Plus size={14} /> Создать домен</button>
+              <button className="btn" disabled={seeding} onClick={() => void fillFromClassifier()}>{seeding ? "Заполняю…" : "Заполнить из классификатора"}</button>
+            </div>
+            <p className="muted mt-4 text-sm">Группы из классификатора скрыты от агентов, пока полку не покажут.</p>
           </div>
         )}
 
@@ -252,6 +281,7 @@ function Home() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="btn" onClick={() => setDialog({ kind: "editDomain", domain })}><Pencil size={14} /> Изменить</button>
+                {domain.catalogKey && <button className="btn btn-primary" onClick={() => setDialog({ kind: "showShelf", domain })}>Показать агентам только эту полку</button>}
                 <a className="btn" href={api.exportDomainUrl(domain.id)}><Download size={14} /> Выгрузить OKF</a>
                 <button className="btn btn-danger" onClick={() => setDialog({ kind: "deleteDomain", domain })}><Trash2 size={14} /> Удалить</button>
               </div>
@@ -413,6 +443,19 @@ function Home() {
           onClose={() => setDialog(null)}
           onSubmit={async (values) => {
             await api.updateDomain(dialog.domain.id, values);
+            await refresh();
+          }}
+        />
+      )}
+      {dialog?.kind === "showShelf" && (
+        <ConfirmDialog
+          title="Показать агентам только эту полку?"
+          text={`Группы полки «${dialog.domain.name}» станут видны. Остальные полки каталога агенты перестанут видеть после публикации. Группы без ключа каталога не изменятся. Черновики в навык не попадут.`}
+          confirmLabel="Показать"
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            const result = await api.showToAgents(dialog.domain.id);
+            setNotice(`Опубликовано групп: ${result.published}. Снято с публикации: ${result.unpublished}. Черновиков на этой полке: ${result.drafts}.`);
             await refresh();
           }}
         />

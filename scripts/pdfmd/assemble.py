@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import re
 
-from layout import merge_split_tables, split_abbreviation_section
+from layout import (
+    drop_contents_tail,
+    lift_abbreviation_heading,
+    merge_split_tables,
+    split_abbreviation_section,
+    split_restarted_tables,
+)
 
 
 def _links(text: str, folder: str) -> str:
-    return re.sub(r"\]\(([^)/]+)\)", lambda match: f"]({folder}/{match.group(1)})", text)
+    def repl(match: re.Match) -> str:
+        target = match.group(1)
+        # A picture file is an asset. «](УДД 5, УУР С)» is a grade, not a file.
+        if re.fullmatch(r"[\w.\-]+\.(?:png|jpe?g|gif|svg|webp)", target):
+            return f"]({folder}/{target})"
+        return f"] ({target})"
+
+    return re.sub(r"\]\(([^)/]+)\)", repl, text)
 
 
 def _render(block: dict, folder: str) -> str:
@@ -40,7 +53,9 @@ def assemble(pages: list[dict], asset_folder: str) -> str:
         if len(piece) < 80:
             counts[piece] = counts.get(piece, 0) + 1
     repeated = {text for text, count in counts.items() if count >= 4}
-    kept = [piece for piece in rendered if piece not in repeated]
+    kept = drop_contents_tail(
+        lift_abbreviation_heading([piece for piece in rendered if piece not in repeated])
+    )
     text = "\n\n".join(kept)
     text = re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
-    return merge_split_tables(split_abbreviation_section(text))
+    return split_restarted_tables(merge_split_tables(split_abbreviation_section(text)))

@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+/** Local Minzdrav PDFs, `data/pdf/<id>.pdf`. Override with OKF_PDF_DIR. */
+export function pdfDir(): string {
+  return process.env.OKF_PDF_DIR || path.join(REPO, "data", "pdf");
+}
+
 /** Where the studio keeps its data. Override with OKF_STUDIO_HOME. */
 export const DATA_DIR = process.env.OKF_STUDIO_HOME || path.join(os.homedir(), ".okf-studio");
 export const PORT = Number(process.env.OKF_STUDIO_PORT) || 8100;

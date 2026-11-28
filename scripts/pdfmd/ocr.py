@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from layout import clean_text, flow, garbage_line, is_toc, label_list, mermaid, promote_title
+from layout import clean_text, flow, garbage_line, is_toc, promote_title
 
 CYR = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
 ROW = re.compile(r"^\d{1,2}$")
@@ -84,13 +84,43 @@ def _hits(lines: list[dict], rect: list[int], width: int, height: int) -> list[d
 
 
 def scheme_caption(lines: list[dict], geom: dict) -> str:
-    """Mermaid for a figure whose boxes were measured and whose words were read."""
-    width, height = geom["w"], geom["h"]
-    labels = []
-    for node in geom["nodes"]:
-        picked = _hits(lines, node, width, height)
-        labels.append(clean_text(" ".join(line["text"] for line in picked)))
-    return mermaid(labels, [tuple(edge) for edge in geom["edges"]])
+    """The picture is the scheme. OCR of the boxes invents arrows the drawing does not have."""
+    del lines, geom
+    return ""
+
+
+_ELEMENT = re.compile(r"^(?:Ga|Lu|Tc|In|Cu|Zr|Yb|Ac)-")
+
+
+def restore_mass_numbers(lines: list[dict], layer: list[dict] | None, page_h: float) -> list[dict]:
+    """A superscript mass number is in the text layer and often missing from OCR.
+
+    «68Оа-…» on the baseline and «Ga-DOTATATE» from the scan are one name.
+    """
+    for line in lines:
+        text = re.sub(
+            r"(\d{2,3})\s+(Ga|Lu|Tc|In|Cu|Zr|Yb|Ac)(?=\s*-)",
+            r"\1\2",
+            line["text"],
+        )
+        if text != line["text"]:
+            line["text"] = text
+        if re.match(r"^\d", text) or not layer or not page_h or not _ELEMENT.match(text):
+            continue
+        center = (line["y"] + line.get("y1", line["y"] + line.get("h", 0))) / 2 * page_h
+        best = None
+        best_d = 14.0
+        for item in layer:
+            mid = (item["y"] + item["y1"]) / 2
+            dist = abs(mid - center)
+            if dist < best_d:
+                best, best_d = item, dist
+        if best is None:
+            continue
+        mass = re.match(r"\s*(\d{2,3})(?=[^\d\s])", best["text"])
+        if mass:
+            line["text"] = mass.group(1) + text
+    return lines
 
 
 def blocks_from_ocr(lines: list[dict], geom: dict | None, page_no: int, image_name: str | None) -> list[dict]:
@@ -117,18 +147,14 @@ def blocks_from_ocr(lines: list[dict], geom: dict | None, page_no: int, image_na
             grid = markdown_table(rows)
             if grid:
                 blocks.append({"type": "table", "text": grid, "y": table[0][0][1] / height})
-        labels = [take(node) for node in geom["nodes"]]
-        edges = [tuple(edge) for edge in geom["edges"]]
-        graph = mermaid(labels, edges)
-        caption = "" if graph else label_list(labels)
-        if (graph or caption) and image_name:
-            pieces = [f"![Схема, страница {page_no}]({image_name})"]
-            if graph:
-                pieces.append(graph)
-            else:
-                pieces.append(caption)
-            top = min(node[1] for node in geom["nodes"]) / height if geom["nodes"] else 0
-            blocks.append({"type": "figure", "text": "\n\n".join(pieces), "y": top})
+        for node in geom["nodes"]:
+            take(node)
+        # The picture is the scheme. A graph built from OCR adds arrows the drawing does not have.
+        if image_name and geom["nodes"]:
+            top = min(node[1] for node in geom["nodes"]) / height
+            blocks.append(
+                {"type": "figure", "text": f"![Схема, страница {page_no}]({image_name})", "y": top}
+            )
 
     rest = []
     for index, line in enumerate(lines):

@@ -7,9 +7,21 @@ _BYTES = {
     0x22: "∀",
     0x24: "∃",
     0x27: "∋",
+    0x20: " ",
     0x2A: "∗",
     0x2B: "+",
+    0x2C: ",",
     0x2D: "−",
+    0x30: "0",
+    0x32: "2",
+    0x33: "3",
+    0x35: "5",
+    0x37: "7",
+    0x39: "9",
+    0x3C: "<",
+    0x3E: ">",
+    # Symbol slot 0x3F is the question mark (hook plus a separate dot).
+    0x3F: "?",
     0x40: "≅",
     0x41: "Α",
     0x42: "Β",
@@ -32,6 +44,8 @@ _BYTES = {
     0x53: "Σ",
     0x54: "Τ",
     0x55: "Υ",
+    0x5B: "[",
+    0x5D: "]",
     0x56: "ς",
     0x57: "Ω",
     0x58: "Ξ",
@@ -64,15 +78,26 @@ _BYTES = {
     0x79: "ψ",
     0x7A: "ζ",
     0x7E: "~",
+    # Symbol slots used as empty checkboxes in questionnaires.
+    0x7F: "☐",
+    0x86: "☐",
     0xA0: " ",
+    # Symbol slot 0xA2 is a prime, written as «Г'».
+    0xA2: "′",
     0xA3: "≤",
     0xA5: "∞",
     # Word stores a square list marker in the Symbol private-use slot.
     0xA7: "▪",
+    # Symbol slot 0xAF is «↓», the pair of 0xAD «↑».
+    0xAF: "↓",
+    # Symbol slot 0xAD is «↑» (elevated labs), the pair of 0xAE «→».
+    0xAD: "↑",
     # Symbol slot used as a right arrow in regimen tables.
     0xAE: "→",
     0xB0: "°",
     0xB1: "±",
+    # Symbol slot 0xB3 is «≥», the pair of 0xA3 «≤».
+    0xB3: "≥",
     0xB4: "×",
     0xB5: "∝",
     0xB7: "•",
@@ -80,16 +105,56 @@ _BYTES = {
     0xB9: "≠",
     0xBA: "≡",
     0xBB: "≈",
-    0xBE: "–",
+    # Symbol slot 0xBE is an em-wide dash, the same width as «—», used as a list marker.
+    0xBE: "—",
     0xD7: "⋅",
+    # The same arrowhead in Wingdings and in the embedded CID font.
+    0xD8: "►",
+    # Symbol slot 0xE3 is the copyright sign («1990 ©»).
+    0xE3: "©",
     # Wingdings check mark.
     0xFC: "✓",
 }
 
+# Slots whose picture depends on the font. Symbol's «1» is a Webdings checkbox.
+_WINGDINGS = {0xB2: "✦", 0xE9: "↑", 0xEA: "↓", 0xFC: "✓"}
+_WINGDINGS2 = {0x97: "•"}
+_WEBDINGS = {0x31: "☐"}
+_OPEN = {"\ue12c": "•", "\ue46f": "▪"}
+
 PUA = {chr(0xF000 + byte): char for byte, char in _BYTES.items()}
 
 
-def map_symbol(text: str) -> str:
+def map_symbol(text: str, font: str = "") -> str:
     if not any(0xE000 <= ord(ch) <= 0xF8FF for ch in text):
         return text
-    return "".join(PUA.get(ch, ch) for ch in text)
+    name = font.lower().replace(" ", "")
+    if "wingdings2" in name:
+        extra = _WINGDINGS2
+    elif "wingding" in name:
+        extra = _WINGDINGS
+    elif "webding" in name:
+        extra = _WEBDINGS
+    else:
+        extra = {}
+    out = []
+    for ch in text:
+        if ch in _OPEN and ("opensymbol" in name or not name):
+            out.append(_OPEN[ch])
+            continue
+        byte = ord(ch) - 0xF000
+        if 0 <= byte <= 0xFF and byte in extra:
+            out.append(extra[byte])
+            continue
+        # Webdings stores a checkbox where Symbol stores the digit 1.
+        if byte == 0x31:
+            if name and "webding" not in name:
+                out.append("1")
+            else:
+                out.append(ch)
+            continue
+        if ch in PUA and not extra:
+            out.append(PUA[ch])
+            continue
+        out.append(ch)
+    return "".join(out)

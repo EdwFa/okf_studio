@@ -95,6 +95,14 @@
 .nosology .age.both { color: var(--both); }
 .nosology .codes { font-variant-numeric: tabular-nums; }
 .nosology .also { color: var(--both); }
+.nosology .assign { display: inline-flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.nosology .group-link { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line); }
+.nosology .group-link:hover { border-bottom-color: var(--fg); }
+.nosology button.place {
+  font-size: 12px; line-height: 1.4; padding: 0; border: none; border-radius: 0;
+  border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
+}
+.nosology button.place:disabled { cursor: default; opacity: 0.75; }
 .nosology .ext { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
 .nosology .ext:hover { color: var(--fg); }
 .nosology .ext.md.is-off { opacity: 0.35; border-bottom: none; }

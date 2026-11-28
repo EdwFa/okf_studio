@@ -7,6 +7,8 @@ export interface GroupInfo {
   hidden: boolean;
   /** The group this one sits inside; absent at the top level of the domain. */
   parentId?: string;
+  /** Set when the group comes from the classifier. Absent on a group made by hand. */
+  catalogKey?: string;
   documents: number;
   reviewed: number;
   failed: number;
@@ -19,6 +21,34 @@ export interface DomainInfo {
   description: string;
   owner: string;
   groups: GroupInfo[];
+  /** Set when the domain comes from the classifier. Absent on a domain made by hand. */
+  catalogKey?: string;
+}
+
+export interface SeedResult {
+  created: { domains: number; groups: number };
+  existing: { domains: number; groups: number };
+}
+
+export interface AssignmentRow {
+  catalogKey: string;
+  name: string;
+  groupId?: string;
+  documentId?: string;
+}
+
+export interface ShowShelfResult {
+  published: number;
+  unpublished: number;
+  drafts: number;
+}
+
+export interface PlaceResult {
+  documentId: string;
+  groupId: string;
+  catalogKey: string;
+  created: boolean;
+  status: DocumentStatus;
 }
 
 export interface Catalog {
@@ -125,6 +155,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   catalog: () => request<Catalog>("GET", "/catalog"),
+  seedCatalog: () => request<SeedResult>("POST", "/catalog/seed"),
+  showToAgents: (domainId: string) => request<ShowShelfResult>("POST", `/domains/${domainId}/show-to-agents`),
+  assignment: () => request<Record<string, AssignmentRow>>("GET", "/catalog/assignment"),
+  placeCr: (crId: string) => request<PlaceResult>("POST", "/catalog/place", { crId }),
   createDomain: (body: { name: string; description?: string; owner?: string }) => request<DomainInfo>("POST", "/domains", body),
   updateDomain: (id: string, body: Partial<Pick<DomainInfo, "name" | "description" | "owner">>) => request("PATCH", `/domains/${id}`, body),
   deleteDomain: (id: string) => request("DELETE", `/domains/${id}`),

@@ -3,9 +3,13 @@
  * `{ detail: string }` with a 4xx status and a message meant for the user.
  *
  *   GET    /catalog                                   domains, groups, counts, limits
+ *   POST   /catalog/seed                              create missing classifier shelves and hidden groups
+ *   GET    /catalog/assignment                        cr id → group name, studio group, placed document
+ *   POST   /catalog/place                             { crId } copy the local PDF into that group
  *   POST   /domains                                   { name, description?, owner? }
  *   PATCH  /domains/:id   DELETE /domains/:id         (delete: empty domains only)
  *   PUT    /domains/order                             { order: [domainId…] }
+ *   POST   /domains/:id/show-to-agents                show this catalog shelf to agents and hide the others
  *   POST   /domains/:id/groups                        { name, description?, parentId? } — parentId nests the group
  *   PUT    /domains/:id/groups/order                  { order: [groupId…] }
  *   GET    /domains/:id/export                        OKF bundle (zip)
@@ -36,6 +40,9 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyInstance } from "fastify";
 import { exportZip, KIND_LABELS } from "./export.ts";
+import { catalogAssignment, placeCr } from "./catalog/place.ts";
+import { seedCatalog } from "./catalog/seed.ts";
+import { showShelfToAgents } from "./catalog/show.ts";
 import { extractText, type Extractor } from "./extract.ts";
 import { Jobs } from "./jobs.ts";
 import { publication, publishGroup, unpublishGroup } from "./publish.ts";
@@ -82,6 +89,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     kinds: DOCUMENT_KINDS.map((id) => ({ id, label: KIND_LABELS[id] })),
     limits: { documentBytes: MAX_DOCUMENT_BYTES, extensions: [...EXTENSIONS] },
   }));
+  app.post("/catalog/seed", () => seedCatalog(store));
+  app.get("/catalog/assignment", () => catalogAssignment(store));
+  app.post<{ Body: { crId?: unknown } }>("/catalog/place", (req) => {
+    const placed = placeCr(store, req.body?.crId);
+    if (placed.created) jobs.add(placed.documentId);
+    return placed;
+  });
 
   app.post("/domains", (req) => store.createDomain(req.body));
   app.put<{ Body: { order?: unknown } }>("/domains/order", (req) => {
@@ -93,6 +107,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     store.deleteDomain(req.params.id);
     return { ok: true };
   });
+  app.post<Id>("/domains/:id/show-to-agents", (req) => showShelfToAgents(store, req.params.id, options.lukaAgentDir));
   app.post<Id>("/domains/:id/groups", (req) => store.createGroup(req.params.id, req.body));
   app.put<Id & { Body: { order?: unknown } }>("/domains/:id/groups/order", (req) => {
     store.reorderGroups(req.params.id, req.body?.order);

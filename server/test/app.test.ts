@@ -10,7 +10,7 @@ import { checkBundle } from "okf-core";
 import { GUIDELINE } from "../../packages/okf-core/test/fixture.ts";
 import { buildApp } from "../src/app.ts";
 import type { Jobs } from "../src/jobs.ts";
-import { guessMetadata, type DocumentView } from "../src/store.ts";
+import { Store, guessMetadata, type DocumentView } from "../src/store.ts";
 
 let dataDir: string;
 let app: FastifyInstance;
@@ -431,6 +431,179 @@ describe("publishing to Luka", () => {
     expect(fs.existsSync(foreign)).toBe(false);
     expect(fs.existsSync(path.join(luka(), "skills", `kb-${group.id}`))).toBe(false);
     expect((await view(id)).doc.status).toBe("reviewed");
+  });
+});
+
+describe("classifier seed", () => {
+  it("opens a studio file written before catalog keys and keeps a key it already has", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "okf-studio-old-"));
+    fs.writeFileSync(
+      path.join(dir, "studio.json"),
+      JSON.stringify({
+        version: 1,
+        domains: [
+          {
+            id: "dom0000001",
+            name: "Свой",
+            description: "ручной",
+            owner: "",
+            groups: [{ id: "grp0000001", name: "Заметки", description: "", hidden: false, catalogKey: "не ключ" }],
+          },
+          {
+            id: "dom0000002",
+            name: "Новообразования",
+            description: "C00–D48",
+            owner: "",
+            catalogKey: "shelf:neo",
+            groups: [{ id: "grp0000002", name: "Органы пищеварения", description: "C15–C26", hidden: true, catalogKey: "group:neo/c15-c26" }],
+          },
+        ],
+      }),
+    );
+    const store = new Store(dir);
+    const domains = store.catalogView().domains;
+    expect(domains[0]).toMatchObject({ name: "Свой", description: "ручной" });
+    expect(domains[0]!.catalogKey).toBeUndefined();
+    expect(domains[0]!.groups[0]!.catalogKey).toBeUndefined();
+    expect(domains[1]).toMatchObject({ catalogKey: "shelf:neo" });
+    expect(domains[1]!.groups[0]).toMatchObject({ catalogKey: "group:neo/c15-c26", hidden: true, name: "Органы пищеварения" });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fills the catalog once, keeps a renamed group and a hand-made domain", async () => {
+    const handmade = (await call<{ id: string; catalogKey?: string }>("POST", "/domains", { name: "Мои заметки", description: "вне каталога" })).json;
+    expect(handmade.catalogKey).toBeUndefined();
+    const first = (await call<{ created: { domains: number; groups: number }; existing: { domains: number; groups: number } }>("POST", "/catalog/seed")).json;
+    expect(first.created).toEqual({ domains: 21, groups: 182 });
+    expect(first.existing).toEqual({ domains: 0, groups: 0 });
+
+    const catalog = (await call<{ domains: { id: string; name: string; catalogKey?: string; groups: { id: string; name: string; hidden: boolean; catalogKey?: string }[] }[] }>("GET", "/catalog")).json;
+    expect(catalog.domains).toHaveLength(22);
+    const notes = catalog.domains.find((domain) => domain.id === handmade.id);
+    expect(notes?.name).toBe("Мои заметки");
+    expect(notes?.catalogKey).toBeUndefined();
+    const neoplasms = catalog.domains.find((domain) => domain.catalogKey === "shelf:neo");
+    const digestive = neoplasms?.groups.find((group) => group.catalogKey === "group:neo/c15-c26");
+    expect(digestive).toMatchObject({ name: "Злокачественные новообразования органов пищеварения", hidden: true });
+    expect(neoplasms?.groups.every((group) => group.hidden)).toBe(true);
+    expect(catalog.domains.filter((domain) => !domain.catalogKey)).toEqual([notes]);
+
+    await call("PATCH", `/groups/${digestive!.id}`, { name: "ЖКТ, как я назвал" });
+    const second = (await call<{ created: { domains: number; groups: number }; existing: { domains: number; groups: number } }>("POST", "/catalog/seed")).json;
+    expect(second.created).toEqual({ domains: 0, groups: 0 });
+    expect(second.existing).toEqual({ domains: 21, groups: 182 });
+    const again = (await call<{ domains: { id: string; name: string; catalogKey?: string; groups: { id: string; name: string; catalogKey?: string }[] }[] }>("GET", "/catalog")).json;
+    expect(again.domains).toHaveLength(22);
+    expect(again.domains.find((domain) => domain.catalogKey === "shelf:neo")?.groups.find((group) => group.catalogKey === "group:neo/c15-c26")?.name).toBe("ЖКТ, как я назвал");
+    expect(again.domains.find((domain) => domain.id === handmade.id)?.catalogKey).toBeUndefined();
+  });
+});
+
+describe("showing one shelf to agents", () => {
+  const luka = () => path.join(dataDir, "luka");
+
+  it("publishes the shown shelf, drops the other, and leaves a hand-made group alone", async () => {
+    fs.mkdirSync(path.join(luka(), "knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(luka(), "knowledge", "knowledge.json"), JSON.stringify({ version: 1, groups: [{ id: "aaaaaaaaaa", name: "Своя группа Луки", hidden: false, docs: [] }] }));
+    const neo = (await call<{ id: string }>("POST", "/domains", { name: "Новообразования", catalogKey: "shelf:neo" })).json;
+    const psych = (await call<{ id: string }>("POST", "/domains", { name: "Психиатрия", catalogKey: "shelf:psych" })).json;
+    const hand = (await call<{ id: string }>("POST", "/domains", { name: "Мои заметки" })).json;
+    const digestive = (await call<{ id: string }>("POST", `/domains/${neo.id}/groups`, { name: "Пищеварение", catalogKey: "group:neo/c15-c26", hidden: true })).json;
+    const empty = (await call<{ id: string }>("POST", `/domains/${neo.id}/groups`, { name: "Пустая полка", catalogKey: "group:neo/c76-c80", hidden: true })).json;
+    const alcohol = (await call<{ id: string }>("POST", `/domains/${psych.id}/groups`, { name: "Алкоголь", catalogKey: "group:psych/f10-alcohol", hidden: true })).json;
+    const notes = (await call<{ id: string }>("POST", `/domains/${hand.id}/groups`, { name: "Заметки" })).json;
+    expect((await call("POST", `/domains/${hand.id}/show-to-agents`)).status).toBe(409);
+
+    const upload = async (groupId: string, filename: string) => {
+      const sent = await app.inject({ method: "POST", url: `/groups/${groupId}/documents`, ...multipartBody([{ name: filename, content: "%PDF" }]) });
+      return (sent.json() as { added: { id: string }[] }).added[0]!.id;
+    };
+    const guide = await upload(digestive.id, "Рак пищевода.pdf");
+    const draft = await upload(digestive.id, "Рак желудка.pdf");
+    const psychDoc = await upload(alcohol.id, "Алкоголь.pdf");
+    const handDoc = await upload(notes.id, "Заметка.pdf");
+    await jobs.whenIdle();
+    await call("PATCH", `/documents/${guide}`, { status: "reviewed" });
+    await call("PATCH", `/documents/${psychDoc}`, { status: "reviewed" });
+    await call("PATCH", `/documents/${handDoc}`, { status: "reviewed" });
+    await call("POST", `/groups/${alcohol.id}/publish`);
+    await call("POST", `/groups/${notes.id}/publish`);
+
+    const first = await call<{ published: number; unpublished: number; drafts: number }>("POST", `/domains/${neo.id}/show-to-agents`);
+    expect(first.status).toBe(200);
+    expect(first.json).toEqual({ published: 1, unpublished: 1, drafts: 1 });
+    const after = (await call<{ domains: { id: string; groups: { id: string; hidden: boolean; catalogKey?: string }[] }[] }>("GET", "/catalog")).json;
+    const groups = after.domains.flatMap((domain) => domain.groups);
+    expect(groups.find((group) => group.id === digestive.id)?.hidden).toBe(false);
+    expect(groups.find((group) => group.id === empty.id)?.hidden).toBe(false);
+    expect(groups.find((group) => group.id === alcohol.id)?.hidden).toBe(true);
+    expect(groups.find((group) => group.id === notes.id)?.hidden).toBe(false);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${digestive.id}`, "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${digestive.id}`, `${draft}.md`))).toBe(false);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${empty.id}`))).toBe(false);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${alcohol.id}`))).toBe(false);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${notes.id}`, "SKILL.md"))).toBe(true);
+    const state = JSON.parse(fs.readFileSync(path.join(luka(), "knowledge", "knowledge.json"), "utf-8")) as { groups: { id: string }[] };
+    expect(state.groups.map((group) => group.id)).toContain("aaaaaaaaaa");
+    expect((await view(guide)).doc.status).toBe("published");
+    expect((await view(draft)).doc.status).toBe("draft");
+
+    await call("PATCH", `/documents/${psychDoc}`, { status: "reviewed" });
+    const second = await call<{ published: number; unpublished: number; drafts: number }>("POST", `/domains/${psych.id}/show-to-agents`);
+    expect(second.json).toMatchObject({ published: 1, unpublished: 1 });
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${digestive.id}`))).toBe(false);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${alcohol.id}`, "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(luka(), "skills", `kb-${notes.id}`, "SKILL.md"))).toBe(true);
+    const switched = (await call<{ domains: { groups: { id: string; hidden: boolean }[] }[] }>("GET", "/catalog")).json;
+    const again = switched.domains.flatMap((domain) => domain.groups);
+    expect(again.find((group) => group.id === digestive.id)?.hidden).toBe(true);
+    expect(again.find((group) => group.id === alcohol.id)?.hidden).toBe(false);
+    expect(again.find((group) => group.id === notes.id)?.hidden).toBe(false);
+  });
+});
+
+describe("placing a recommendation", () => {
+  it("shows one group for esophagus and stomach, and another for the pharynx", async () => {
+    await call("POST", "/catalog/seed");
+    const map = (await call<Record<string, { catalogKey: string; name: string; groupId?: string }>>("GET", "/catalog/assignment")).json;
+    expect(map["574_3"]).toMatchObject({ catalogKey: "group:neo/c15-c26", name: "Злокачественные новообразования органов пищеварения" });
+    expect(map["237_6"]?.catalogKey).toBe(map["574_3"]?.catalogKey);
+    expect(map["4_2"]?.catalogKey).toBe("group:neo/c00-c14");
+    expect(map["878_1"]?.catalogKey.startsWith("group:inf/")).toBe(true);
+    expect(map["574_3"]?.groupId).toBeTruthy();
+  });
+
+  it("copies a pdf into the assigned group once and leaves the group empty when the file is missing", async () => {
+    const previous = process.env.OKF_PDF_DIR;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "okf-pdf-"));
+    process.env.OKF_PDF_DIR = dir;
+    try {
+      fs.writeFileSync(path.join(dir, "574_3.pdf"), "%PDF-1.4");
+      expect((await call("POST", "/catalog/place", { crId: "574_3" })).status).toBe(404);
+      await call("POST", "/catalog/seed");
+      const first = await call<{ documentId: string; groupId: string; created: boolean; status: string; catalogKey: string }>("POST", "/catalog/place", { crId: "574_3" });
+      expect(first.status).toBe(200);
+      expect(first.json).toMatchObject({ created: true, status: "draft", catalogKey: "group:neo/c15-c26" });
+      await jobs.whenIdle();
+      const doc = await view(first.json.documentId);
+      expect(doc.doc).toMatchObject({ status: "draft", kind: "guideline", title: "Рак желудка", groupId: first.json.groupId, tags: ["cr:574_3"], origin: "minzdrav:574_3" });
+      expect(doc.doc.description).toContain("взрослые");
+      expect(doc.doc.icd10).toContain("C16.1");
+      expect(doc.doc.publishedAt).toBeUndefined();
+      expect(fs.existsSync(path.join(dir, "574_3.pdf"))).toBe(true);
+      const second = await call<typeof first.json>("POST", "/catalog/place", { crId: "574_3" });
+      expect(second.json).toMatchObject({ documentId: first.json.documentId, created: false, groupId: first.json.groupId });
+      const docs = (await call<{ documents: { id: string }[] }>("GET", `/groups/${first.json.groupId}/documents`)).json;
+      expect(docs.documents.map((item) => item.id)).toEqual([first.json.documentId]);
+      expect((await call("POST", "/catalog/place", { crId: "4_2" })).status).toBe(422);
+      const head = (await call<Record<string, { groupId?: string; documentId?: string }>>("GET", "/catalog/assignment")).json["4_2"];
+      expect(head?.documentId).toBeUndefined();
+      expect((await call<{ documents: unknown[] }>("GET", `/groups/${head!.groupId}/documents`)).json.documents).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.OKF_PDF_DIR;
+      else process.env.OKF_PDF_DIR = previous;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

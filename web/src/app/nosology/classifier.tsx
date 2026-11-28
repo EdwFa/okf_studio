@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { api, type AssignmentRow } from "@/lib/api";
 
 const TOTAL = 781;
 
@@ -12,6 +13,13 @@ export function Classifier({ treeHtml, rubricCount }: { treeHtml: string; rubric
   const [age, setAge] = useState("all");
   const [shown, setShown] = useState(`Показано ${TOTAL} из ${TOTAL}`);
   const [empty, setEmpty] = useState(false);
+  const [assignment, setAssignment] = useState<Record<string, AssignmentRow> | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.assignment().then((rows) => { if (live) setAssignment(rows); }).catch(() => { if (live) setAssignment(null); });
+    return () => { live = false; };
+  }, []);
 
   function showTwoLevels() {
     const tree = treeRef.current;
@@ -40,6 +48,48 @@ export function Classifier({ treeHtml, rubricCount }: { treeHtml: string; rubric
     doc.classList.toggle("is-hidden", !show);
     return show;
   }
+
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    tree.querySelectorAll<HTMLElement>("li.doc").forEach((doc) => {
+      doc.querySelector(".assign")?.remove();
+      const titled = doc.querySelector("a.docname")?.getAttribute("title")?.split(",")[0]?.trim();
+      const linked = doc.querySelector("a[href^='/pdf/']")?.getAttribute("href")?.split("/").pop();
+      const id = titled && /^\d+_\d+$/.test(titled) ? titled : linked;
+      const row = id ? assignment?.[id] : undefined;
+      if (!id || !row) return;
+      const base = doc.dataset.searchBase ?? doc.dataset.search ?? "";
+      doc.dataset.searchBase = base;
+      doc.dataset.search = `${base} ${row.name.toLowerCase()}`;
+      const slot = document.createElement("span");
+      slot.className = "assign";
+      if (row.groupId) {
+        const link = document.createElement("a");
+        link.className = "group-link";
+        link.href = `/?g=${row.groupId}`;
+        link.textContent = row.name;
+        slot.append(link);
+      } else {
+        slot.textContent = row.name;
+      }
+      if (row.documentId) {
+        const open = document.createElement("a");
+        open.className = "ext";
+        open.href = `/doc?id=${row.documentId}`;
+        open.textContent = "Открыть";
+        slot.append(open);
+      } else if (row.groupId) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "place";
+        button.dataset.cr = id;
+        button.textContent = "Положить в группу";
+        slot.append(button);
+      }
+      doc.querySelector(".docmeta")?.append(slot);
+    });
+  }, [assignment, treeHtml]);
 
   useEffect(() => {
     const tree = treeRef.current;
@@ -108,7 +158,7 @@ export function Classifier({ treeHtml, rubricCount }: { treeHtml: string; rubric
     wasFiltering.current = filtering;
     setShown(`Показано ${visibleDocs} из ${TOTAL}`);
     setEmpty(visibleDocs === 0);
-  }, [query, age, treeHtml]);
+  }, [query, age, treeHtml, assignment]);
 
   return (
     <div className="nosology">
@@ -143,7 +193,30 @@ export function Classifier({ treeHtml, rubricCount }: { treeHtml: string; rubric
         </div>
         <p className="shown">{shown}</p>
         <p className={`empty${empty ? " show" : ""}`}>Ничего не найдено.</p>
-        <ul className="tree" ref={treeRef} dangerouslySetInnerHTML={{ __html: treeHtml }} />
+        <ul
+          className="tree"
+          ref={treeRef}
+          dangerouslySetInnerHTML={{ __html: treeHtml }}
+          onClick={(event) => {
+            const button = (event.target as HTMLElement).closest("button.place");
+            if (!(button instanceof HTMLButtonElement)) return;
+            const crId = button.dataset.cr;
+            if (!crId) return;
+            button.disabled = true;
+            button.textContent = "Кладу…";
+            void api.placeCr(crId).then((result) => {
+              const link = document.createElement("a");
+              link.className = "ext";
+              link.href = `/doc?id=${result.documentId}`;
+              link.textContent = "Открыть";
+              button.replaceWith(link);
+              if (!result.created) window.location.assign(link.href);
+            }).catch((exc: unknown) => {
+              button.disabled = true;
+              button.textContent = exc instanceof Error ? exc.message : "Не удалось";
+            });
+          }}
+        />
       </div>
     </div>
   );

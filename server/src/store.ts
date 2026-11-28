@@ -44,6 +44,8 @@ export const EXTENSIONS = [".pdf", ".docx", ".md", ".markdown", ".txt"] as const
 export const DOCUMENT_KINDS = ["guideline", "standard", "order", "article", "manual", "other"] as const;
 const MAX_TEXT_CHARS = 5_000_000;
 const ID_RE = /^[a-z0-9]{6,16}$/;
+const CATALOG_KEY_RE = /^(?:shelf:[a-z0-9]+|group:[a-z0-9]+\/[a-z0-9-]+)$/;
+const catalogKeyOf = (value: unknown): string | undefined => (typeof value === "string" && CATALOG_KEY_RE.test(value) ? value : undefined);
 
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 export type DocumentStatus = "draft" | "reviewed" | "published";
@@ -58,6 +60,8 @@ export interface Group {
   hidden: boolean;
   /** The group this one sits inside; absent at the top level of its domain. Groups nest to any depth. */
   parentId?: string;
+  /** Stable id from the classifier snapshot. Absent on a group a person created by hand. */
+  catalogKey?: string;
 }
 
 export interface Domain {
@@ -67,6 +71,8 @@ export interface Domain {
   /** Who answers for the domain's content. */
   owner: string;
   groups: Group[];
+  /** Stable id from the classifier snapshot. Absent on a domain a person created by hand. */
+  catalogKey?: string;
 }
 
 export interface DocumentMeta {
@@ -260,12 +266,14 @@ export class Store {
       const groups: Group[] = [];
       for (const item of Array.isArray(value.groups) ? value.groups : []) {
         if (!isRecord(item) || typeof item.id !== "string" || !ID_RE.test(item.id)) continue;
+        const groupKey = catalogKeyOf(item.catalogKey);
         groups.push({
           id: item.id,
           name: line(item.name, 120) || "Без названия",
           description: line(item.description, 500),
           hidden: item.hidden === true,
           ...(typeof item.parentId === "string" ? { parentId: item.parentId } : {}),
+          ...(groupKey ? { catalogKey: groupKey } : {}),
         });
       }
       // A parent link must point to a group of the same domain and never loop.
@@ -280,7 +288,15 @@ export class Store {
           seen.add(up);
         }
       }
-      domains.push({ id: value.id, name: line(value.name, 120) || "Без названия", description: line(value.description, 500), owner: line(value.owner, 120), groups });
+      const domainKey = catalogKeyOf(value.catalogKey);
+      domains.push({
+        id: value.id,
+        name: line(value.name, 120) || "Без названия",
+        description: line(value.description, 500),
+        owner: line(value.owner, 120),
+        groups,
+        ...(domainKey ? { catalogKey: domainKey } : {}),
+      });
     }
     return { domains };
   }
@@ -360,14 +376,27 @@ export class Store {
     return name;
   }
 
+  private claimCatalogKey(value: unknown): string | undefined {
+    if (value === undefined) return undefined;
+    const key = catalogKeyOf(value);
+    if (!key) throw new StoreError("Ключ каталога задан неверно");
+    for (const domain of this.catalog.domains) {
+      if (domain.catalogKey === key) throw new StoreError("Такой ключ каталога уже есть", 409);
+      if (domain.groups.some((group) => group.catalogKey === key)) throw new StoreError("Такой ключ каталога уже есть", 409);
+    }
+    return key;
+  }
+
   createDomain(input: unknown): Domain {
     const body = isRecord(input) ? input : {};
+    const catalogKey = this.claimCatalogKey(body.catalogKey);
     const domain: Domain = {
       id: newId(),
       name: this.uniqueName(body.name, this.catalog.domains, undefined, "Домен"),
       description: line(body.description, 500),
       owner: line(body.owner, 120),
       groups: [],
+      ...(catalogKey ? { catalogKey } : {}),
     };
     this.catalog.domains.push(domain);
     this.saveCatalog(`домен создан: ${domain.name}`);
@@ -447,16 +476,31 @@ export class Store {
     const body = isRecord(input) ? input : {};
     const domain = this.domain(domainId);
     const parentId = this.parentIn(domain, body.parentId);
+    if (body.hidden !== undefined && typeof body.hidden !== "boolean") throw new StoreError("hidden должно быть true или false");
+    const catalogKey = this.claimCatalogKey(body.catalogKey);
     const group: Group = {
       id: newId(),
       name: this.uniqueName(body.name, Store.siblings(domain, parentId), undefined, "Группа"),
       description: line(body.description, 500),
-      hidden: false,
+      hidden: body.hidden === true,
       ...(parentId ? { parentId } : {}),
+      ...(catalogKey ? { catalogKey } : {}),
     };
     domain.groups.push(group);
     this.saveCatalog(`группа создана: ${domain.name} / ${this.groupPath(group.id)}`);
     return group;
+  }
+
+  /** Set visibility of many groups and write the catalog once. */
+  setHidden(updates: { id: string; hidden: boolean }[]): void {
+    let changed = false;
+    for (const update of updates) {
+      const { group } = this.groupWithDomain(update.id);
+      if (group.hidden === update.hidden) continue;
+      group.hidden = update.hidden;
+      changed = true;
+    }
+    if (changed) this.saveCatalog("видимость полок каталога изменена");
   }
 
   /**

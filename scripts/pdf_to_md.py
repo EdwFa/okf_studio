@@ -31,18 +31,21 @@ sys.path.insert(0, str(SCRIPTS / "pdfmd"))
 from assemble import assemble  # noqa: E402
 from checks import recall, structural  # noqa: E402
 from layout import clean_text, flow  # noqa: E402
-from ocr import blocks_from_ocr, recognize, scheme_caption  # noqa: E402
+from ocr import blocks_from_ocr, recognize, restore_mass_numbers, scheme_caption  # noqa: E402
 
 
 def _fix_italic(page: dict, assets: Path) -> None:
     """Italic spans in some files map ligatures to the wrong letters. Read those lines from the page image."""
-    if not page.get("italic_fix") or not page.get("lines") or not page.get("image"):
+    if not page.get("lines") or not page.get("image"):
+        return
+    if not page.get("italic_fix") and not page.get("line_fix"):
         return
     height = page["page_h"]
     seen = recognize(assets / page["image"])
     patched = []
     for line in page["lines"]:
-        if not line.get("italic"):
+        replace = line.get("garbled") or (page.get("italic_fix") and line.get("italic"))
+        if not replace:
             patched.append(line)
             continue
         center = (line["y"] + line["y1"]) / 2
@@ -89,6 +92,7 @@ def convert(source: Path, target: Path, pages: str | None = None) -> dict:
         if not image:
             continue
         lines = recognize(assets / image)
+        lines = restore_mass_numbers(lines, page.get("layer_lines"), page.get("page_h") or 0)
         page["blocks"] = blocks_from_ocr(lines, page.get("geom"), page["page"], image)
         print(f"ocr page {page['page']}", file=sys.stderr)
     for page in extracted:
